@@ -1,0 +1,94 @@
+---
+title: "Unit Test"
+author: "Jesse D. Raffa"
+date: "8/1/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Test Imputation
+
+- Create small dataset
+- Grab completed data from batch job
+- Preprocess and impute data on small dataset
+- Check values
+
+```{r}
+set.seed(45)
+library(GOSSIS); library(dplyr)
+d <- read.csv("~/data/GOSSIS/gossis-data-2018-03-20.csv.gz")
+dat_tr <- d %>% mutate(row_id = row_number()) %>% 
+  group_by(data_source, hospital_id) %>% sample_frac(0.7) %>% ungroup()
+dp <- preprocess_data(dat_tr %>% filter(data_source %in% c("eicu","anzics")))
+
+dpi <- impute_data(dp,algo=3)
+dp_io <- dpi # For later
+di <- read.csv("~/data2/GOSSIS/final5/t2_4/t2_4/pp_imp_final-FULL-tr.csv.gz")
+names(di) <- paste0(names(di),"_imp")
+dicomb <- dpi %>% inner_join(di,by=c("encounter_id"="id__imp"))
+nrow(dicomb)==266199
+max(abs(dicomb$d1_sysbp_min-dicomb$d1_sysbp_min_imp))<1e-12
+max(abs(dicomb$age-dicomb$age_imp))<1e-12
+max(abs(dicomb$d1_lactate_max-dicomb$d1_lactate_max_imp))<1e-12
+max(abs(dicomb$d1_lactate_max-dicomb$d1_lactate_max_imp))<1e-12
+max(abs(dicomb$d1_sodium_min-dicomb$d1_sodium_min_imp))<1e-11
+max(abs(dicomb$d1_arterial_ph_min - dicomb$d1_arterial_ph_min_imp))<1e-12
+sum(diag(with(dicomb,table(dcs_group,dcs_group_imp))))==nrow(dicomb)
+```
+
+Should be all `TRUE`
+
+
+# Check CV Folds
+
+```{r}
+library(GOSSIS); library(dplyr)
+d <- read.csv("~/data/GOSSIS/gossis-data-2018-03-20.csv.gz")
+#load("~/data2/GOSSIS/final5/t2_4/t2_4/dat-STAGE1.rdata")
+dp <- preprocess_data(d %>% filter(data_source!="mimic"))
+dpi <- impute_data(dp,algo=3,
+                   files = c("~/code/GOSSIS_rproj/GOSSIS/resources/cv/4/imputation_models_1.rdata",
+                             "~/code/GOSSIS_rproj/GOSSIS/resources/cv/4/imputation_models_fac_1.rdata"))
+di <- read.csv("~/data2/GOSSIS/final5/t2_4/t2_4/pp_imp_tr-fold-1-tr.csv.gz")
+names(di) <- paste0(names(di),"_imp")
+dicomb <- dpi %>% inner_join(di,by=c("encounter_id"="id__imp"))
+nrow(dicomb)==212813
+max(abs(dicomb$d1_sysbp_min-dicomb$d1_sysbp_min_imp))<1e-12
+max(abs(dicomb$age-dicomb$age_imp))<1e-12
+max(abs(dicomb$d1_lactate_max-dicomb$d1_lactate_max_imp))<1e-12
+max(abs(dicomb$d1_lactate_max-dicomb$d1_lactate_max_imp))<1e-12
+max(abs(dicomb$d1_sodium_min-dicomb$d1_sodium_min_imp))<1e-11
+max(abs(dicomb$d1_arterial_ph_min - dicomb$d1_arterial_ph_min_imp))<1e-12
+sum(diag(with(dicomb,table(dcs_group,dcs_group_imp))))==nrow(dicomb)
+```
+
+
+## Test Rest of Pipeline Works
+
+```{r}
+kay = 5;
+basis = "'cr'"
+selects = FALSE
+#load("~/data2/GOSSIS/final5/t2_4/t2_4/candmod_te_'cr'_k5_select_FALSE.rdata")
+dp_io <- prepare_fit(dp_io)
+
+library(mgcv)
+di <- read.csv("~/data2/GOSSIS/final5/t2_4/t2_4/pp_imp_final-FULL-tr.csv.gz")
+
+dp_io2 <- dp_io %>% inner_join(di %>% select(id_,fold),by=c("encounter_id"="id_"))
+
+formm <- generate_formula(basis,kay)
+fit  <- bam(formula(formm),data=dp_io2 %>% filter(!is.na(fold)),family="binomial",na.action=na.exclude,discrete = TRUE,select = selects)
+
+dite <- read.csv("~/data2/GOSSIS/final5/t2_4/t2_4/pp_imp_final-FULL-te.csv.gz")
+dite <- dite %>% filter(!is.na(hospital_death))
+dp_io2 <- dp_io %>% inner_join(dite %>% select(encounter_id) ,by="encounter_id")
+#dp_io_te$pred[dp_io_te$dx_sub!="091002Other medical disordersOther medical disorders"] <- predict(fit,dp_io_te %>% filter(dx_sub!="091002Other medical disordersOther medical disorders"))
+
+dp_io2$preds[dp_io2$dx_sub!="091002Other medical disordersOther medical disorders"] <- plogis(predict(fit,newdata=dp_io2 %>% filter(dx_sub!="091002Other medical disordersOther medical disorders"),na.action=na.pass))
+with(dp_io2,ModelMetrics::auc(y,preds))
+
+```

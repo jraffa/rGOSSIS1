@@ -1,0 +1,214 @@
+---
+title: "Creating Files"
+author: "Jesse D. Raffa"
+date: "7/29/2019"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(GOSSIS)
+setwd("~/code/GOSSIS_rproj/GOSSIS/R/")
+source("misc.R")
+```
+
+## Create Imputation Model Files
+
+- remove training data from xgboost models
+- create a data structure
+- save to disk
+- compile rda file
+
+
+```{r}
+o <- dump_models(dir="~/data2/GOSSIS/final5/t2_4/t2_4/",fold="FINAL")
+gc()
+fac_vars <-
+  c(
+    "dcs_group",
+    "vent",
+    "elective_surgery",
+    "aids",
+    "diabetes_mellitus",
+    "lymphoma",
+    "solid_tumor_with_metastasis",
+    "cirrhosis",
+    "hepatic_failure",
+    "arf_apache"
+  )
+vo <- names(o)
+o1 <- o[!(vo %in% fac_vars)]
+o2 <- o[(vo %in% fac_vars)]
+gc()
+save(o1,file="~/code/GOSSIS_rproj/GOSSIS/resources/imputation_models.rdata")
+gc()
+save(o2,file="~/code/GOSSIS_rproj/GOSSIS/resources/imputation_models_fac.rdata")
+gc()
+imputation_models <- o1
+gc()
+imputation_models_fac <- o2
+gc()
+devtools::use_data(imputation_models,pkg="~/code/GOSSIS_rproj/GOSSIS/",overwrite = TRUE)
+devtools::use_data(imputation_models_fac,pkg="~/code/GOSSIS_rproj/GOSSIS/",overwrite = TRUE)
+gc()
+```
+
+For imputation model:
+
+- Load training set
+- compute column medians
+- save to rda
+
+```{r}
+library(dplyr)
+
+
+get_mode_dat <- function(x) {
+  return(names(which.max(table(x))) )
+}
+dat_tr <- read.csv("~/data2/GOSSIS/final5/t2_4/t2_4/dat_tr-without_imputation.csv.gz")
+medians_numeric <- dat_tr %>% summarise_at(vars(starts_with("d1_"),age,),funs(median),na.rm=T)
+modes_cat <- dat_tr %>% select_at(vars(fac_vars)) %>% summarise_all(funs(get_mode_dat))
+devtools::use_data(medians_numeric,pkg="~/code/GOSSIS_rproj/GOSSIS/",overwrite = TRUE)
+devtools::use_data(modes_cat,pkg="~/code/GOSSIS_rproj/GOSSIS/",overwrite = TRUE)
+
+```
+
+
+## Create Validation Files
+
+
+### xgboost tl=1
+
+```{r}
+fac_vars <-
+  c(
+    "dcs_group",
+    "vent",
+    "elective_surgery",
+    "aids",
+    "diabetes_mellitus",
+    "lymphoma",
+    "solid_tumor_with_metastasis",
+    "cirrhosis",
+    "hepatic_failure",
+    "arf_apache"
+  )
+
+process_fold <- function(f,d="~/data2/GOSSIS/final5/t2_1/",tl=1) {
+  if(!dir.exists(paste0("~/code/GOSSIS_rproj/GOSSIS/resources/",tl))) {
+    dir.create(paste0("~/code/GOSSIS_rproj/GOSSIS/resources/",tl))
+  } 
+  o <- dump_models(dir=d,fold=f)
+  gc()
+  vo <- names(o)
+  o1 <- o[!(vo %in% fac_vars)]
+  o2 <- o[(vo %in% fac_vars)]
+  gc()
+  save(o1,file=paste0("~/code/GOSSIS_rproj/GOSSIS/resources/",tl,"/imputation_models_",f,".rdata"))
+  gc()
+  save(o2,file=paste0("~/code/GOSSIS_rproj/GOSSIS/resources/",tl,"/imputation_models_fac_",f,".rdata"))
+  gc()
+  
+}
+process_fold(1)
+process_fold(2)
+process_fold(3)
+process_fold(4)
+process_fold(5)
+process_fold("FINAL")
+
+```
+
+### tl=2
+
+```{r}
+process_fold(1,d="~/data2/GOSSIS/final5/t2/",tl=2)
+process_fold(2,d="~/data2/GOSSIS/final5/t2/",tl=2)
+process_fold(3,d="~/data2/GOSSIS/final5/t2/",tl=2)
+process_fold(4,d="~/data2/GOSSIS/final5/t2/",tl=2)
+process_fold(5,d="~/data2/GOSSIS/final5/t2/",tl=2)
+process_fold("FINAL",d="~/data2/GOSSIS/final5/t2/",tl=2)
+
+```
+
+
+### tl=3
+
+```{r}
+process_fold(1,d="~/data2/GOSSIS/final5/t2_3/",tl=3)
+process_fold(2,d="~/data2/GOSSIS/final5/t2_3/",tl=3)
+process_fold(3,d="~/data2/GOSSIS/final5/t2_3/",tl=3)
+process_fold(4,d="~/data2/GOSSIS/final5/t2_3/",tl=3)
+process_fold(5,d="~/data2/GOSSIS/final5/t2_3/",tl=3)
+process_fold("FINAL",d="~/data2/GOSSIS/final5/t2_3/",tl=3)
+
+```
+
+
+### tl=4
+
+```{r}
+process_fold(1,d="~/data2/GOSSIS/final5/t2_4/t2_4/",tl=4)
+process_fold(2,d="~/data2/GOSSIS/final5/t2_4/t2_4/",tl=4)
+process_fold(3,d="~/data2/GOSSIS/final5/t2_4/t2_4/",tl=4)
+process_fold(4,d="~/data2/GOSSIS/final5/t2_4/t2_4/",tl=4)
+process_fold(5,d="~/data2/GOSSIS/final5/t2_4/t2_4/",tl=4)
+process_fold("FINAL",d="~/data2/GOSSIS/final5/t2_4/t2_4/",tl=4)
+
+```
+
+
+# Create Prediction Model Files
+
+```{r}
+library(GOSSIS) ; library(dplyr)
+library(mgcv)
+load("~/data2/GOSSIS/final5/out2/algo3/cand_mod-2-20-'cr'.rdata")
+d <- read.csv("~/data/GOSSIS/gossis-data-2018-03-20.csv.gz")
+dat_tr3 <- preprocess_data(d %>% filter(data_source == "eicu") %>% slice(1:10))
+dat_tr3 <- impute_data(dat_tr3,algo=3)
+dat_tr3 <- prepare_fit(dat_tr3)
+gpredict(mod=cand_mod,newdata=dat_tr3[1:10,])
+
+req_elems <- c(#"Vc",
+#"Vp",
+"na.action",
+"coefficients",
+"family",
+"smooth",
+"model",
+"pterms",
+"cmX",
+"nsdf",
+"assign",
+"Xcentre",
+"contrasts",
+"xlevels",
+"formula",
+"pred.formula",
+"terms")
+
+# Remove Data Frame
+for (n in names(cand_mod)) {
+  if (!(n %in% req_elems)) {
+    cand_mod[[n]] <- NULL
+  }
+}
+
+for (i in 1:length(cand_mod$smooth)) {
+  cand_mod$smooth[[i]]$S <- NULL
+}
+
+cand_mod$model <- cand_mod$model[1,]
+save(cand_mod, file="/tmp/cand_mod.rdata")
+rm(cand_mod)
+load("/tmp/cand_mod.rdata")
+gpredict(mod=cand_mod,newdata=dat_tr3[1:10,])
+gossis1_ihmp = cand_mod
+devtools::use_data(gossis1_ihmp,pkg="~/code/GOSSIS_rproj/GOSSIS/",overwrite = TRUE)
+
+```
+
+
+

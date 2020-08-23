@@ -1,0 +1,14 @@
+Package: rGOSSIS1
+Type: Package
+Title: GOSSIS: Global Open Source Severity of Illness Scale
+Version: 0.1.0
+Author: Jesse D. Raffa
+Maintainer: Jesse D. Raffa <jraffa@mit.edu>
+Description: Global Open Source Severity of Illness Scale imputation and prediction code.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+Imports: dplyr,
+    caret,
+    stringr
+RoxygenNote: 6.1.1
